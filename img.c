@@ -1,10 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/time.h>
+#include <sys/inotify.h>
 
 #include <gtk/gtk.h>
 
 char *filename;
+int inotify_fd;
 
 void
 usage (void)
@@ -76,6 +79,50 @@ key_press_event (GtkWidget *widget, GdkEventKey *ev, gpointer data)
 	return (TRUE);
 }
 
+double
+get_secs (void)
+{
+	struct timeval tv;
+	gettimeofday (&tv, NULL);
+	return (tv.tv_sec + tv.tv_usec / 1e6);
+}
+
+int mod_state;
+double mod_secs;
+
+gboolean
+tick (gpointer data)
+{
+	switch (mod_state) {
+	case 0:
+		break;
+	case 1:
+		if (get_secs () - mod_secs < .5)
+			break;
+
+		read_image ();
+
+		gtk_widget_queue_draw_area (window, 0, 0,
+					    window->allocation.width,
+					    window->allocation.height);
+		mod_state = 0;
+	}
+	return (TRUE);
+}
+
+gboolean
+inotify_handler (GIOChannel *source, GIOCondition condition, gpointer data)
+{
+	char buf[10000];
+
+	if (read (inotify_fd, buf, sizeof buf) < 0)
+		return (TRUE);
+
+	mod_state = 1;
+	mod_secs = get_secs ();
+
+	return (TRUE);
+}
 
 int
 main (int argc, char **argv)
@@ -123,10 +170,24 @@ main (int argc, char **argv)
 	g_signal_connect (G_OBJECT (window), "key_press_event",
 			  G_CALLBACK (key_press_event), NULL);
 
-
 	gtk_widget_show (window);
-
 	gc = gdk_gc_new (window->window);
+
+
+	if ((inotify_fd = inotify_init1 (IN_NONBLOCK)) < 0) {
+		fprintf (stderr, "error doing inotify_init\n");
+		exit (1);
+	}
+
+	if (inotify_add_watch (inotify_fd, filename, IN_MODIFY) < 0) {
+		fprintf (stderr, "error doing inotify_add_watch\n");
+		exit (1);
+	}
+	
+	g_timeout_add (100, tick, NULL);
+
+	g_io_add_watch (g_io_channel_unix_new (inotify_fd), G_IO_IN,
+			inotify_handler, NULL);
 
 	gtk_main ();
 	return (0);
