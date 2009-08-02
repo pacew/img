@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <memory.h>
 #include <sys/time.h>
 #include <sys/inotify.h>
 
@@ -12,7 +13,7 @@ int inotify_fd;
 void
 usage (void)
 {
-	fprintf (stderr, "usage: pview file\n");
+	fprintf (stderr, "usage: img file\n");
 	exit (1);
 }
 
@@ -43,22 +44,26 @@ expose_event ()
 	return (TRUE);
 }
 
-void
+int
 read_image (void)
 {
+	GdkPixbuf *new_pixbuf;
+
+
+	new_pixbuf = gdk_pixbuf_new_from_file (filename, NULL);
+	if (new_pixbuf == NULL)
+		return (-1);
+
 	if (pixbuf)
 		g_object_unref (pixbuf);
 
-	pixbuf = gdk_pixbuf_new_from_file (filename, NULL);
-	if (pixbuf == NULL) {
-		fprintf (stderr, "can't open %s\n", filename);
-		return;
-	}
+	pixbuf = new_pixbuf;
 
 	gtk_window_resize (GTK_WINDOW (window), 
 			   gdk_pixbuf_get_width (pixbuf),
 			   gdk_pixbuf_get_height (pixbuf));
 
+	return (0);
 }
 
 gboolean
@@ -87,16 +92,21 @@ get_secs (void)
 	return (tv.tv_sec + tv.tv_usec / 1e6);
 }
 
-int mod_state;
+enum {
+	mod_idle,
+	mod_pending,
+	mod_deleted,
+} mod_state;
+
 double mod_secs;
 
 gboolean
 tick (gpointer data)
 {
 	switch (mod_state) {
-	case 0:
+	case mod_idle:
 		break;
-	case 1:
+	case mod_pending:
 		if (get_secs () - mod_secs < .5)
 			break;
 
@@ -105,7 +115,20 @@ tick (gpointer data)
 		gtk_widget_queue_draw_area (window, 0, 0,
 					    window->allocation.width,
 					    window->allocation.height);
-		mod_state = 0;
+		mod_state = mod_idle;
+		break;
+
+	case mod_deleted:
+		if (access (filename, R_OK) < 0)
+			break;
+
+		if (inotify_add_watch (inotify_fd, filename,
+				       IN_MODIFY | IN_DELETE_SELF) < 0) {
+			fprintf (stderr, "error doing inotify_add_watch\n");
+			exit (1);
+		}
+		mod_state = mod_pending;
+		break;
 	}
 	return (TRUE);
 }
@@ -114,12 +137,19 @@ gboolean
 inotify_handler (GIOChannel *source, GIOCondition condition, gpointer data)
 {
 	char buf[10000];
+	struct inotify_event ev;
 
 	if (read (inotify_fd, buf, sizeof buf) < 0)
 		return (TRUE);
 
-	mod_state = 1;
-	mod_secs = get_secs ();
+	memcpy (&ev, buf, sizeof ev);
+
+	if (ev.mask & IN_DELETE_SELF) {
+		mod_state = mod_deleted;
+	} else {
+		mod_state = mod_pending;
+		mod_secs = get_secs ();
+	}
 
 	return (TRUE);
 }
@@ -149,9 +179,10 @@ main (int argc, char **argv)
 	window = gtk_window_new (GTK_WINDOW_TOPLEVEL);
 	gtk_window_set_title (GTK_WINDOW (window), filename);
 
-	read_image ();
-	if (pixbuf == NULL)
-		exit (1); /* error message already printed */
+	if (read_image () < 0) {
+		fprintf (stderr, "can't open %s\n", filename);
+		exit (1);
+	}
 
 	gtk_window_set_default_size (GTK_WINDOW (window), 
 				     gdk_pixbuf_get_width (pixbuf),
@@ -179,7 +210,8 @@ main (int argc, char **argv)
 		exit (1);
 	}
 
-	if (inotify_add_watch (inotify_fd, filename, IN_MODIFY) < 0) {
+	if (inotify_add_watch (inotify_fd, filename,
+			       IN_MODIFY | IN_DELETE_SELF) < 0) {
 		fprintf (stderr, "error doing inotify_add_watch\n");
 		exit (1);
 	}
