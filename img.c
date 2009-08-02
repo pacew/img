@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <memory.h>
-#include <fcntl.h>
 #include <sys/time.h>
 #include <sys/inotify.h>
 
@@ -17,7 +16,7 @@ int auto_raise = 1;
 void
 usage (void)
 {
-	fprintf (stderr, "usage: img [-a 0|1] file\n");
+	fprintf (stderr, "usage: img [-n] filename\n");
 	exit (1);
 }
 
@@ -40,7 +39,6 @@ int
 read_image (void)
 {
 	GdkPixbuf *new_pixbuf;
-
 
 	new_pixbuf = gdk_pixbuf_new_from_file (filename, NULL);
 	if (new_pixbuf == NULL)
@@ -69,7 +67,7 @@ key_press_event (GtkWidget *widget, GdkEventKey *ev, gpointer data)
 	switch (ev->keyval) {
 	case 'q': /* covers q or ALT-q */
 	case 'c': /* covers CTL-c */
-	case 'w': /* covers ALT-w */
+	case 'w': /* covers CTL-w */
 	case GDK_Escape:
 		gtk_main_quit ();
 	}
@@ -229,8 +227,6 @@ main (int argc, char **argv)
 		fprintf (stderr, "error doing inotify_init\n");
 		exit (1);
 	}
-
-	fcntl (inotify_fd, F_SETFL, O_NONBLOCK);
 
 	g_io_add_watch (g_io_channel_unix_new (inotify_fd), G_IO_IN,
 			inotify_handler, NULL);
