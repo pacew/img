@@ -190,10 +190,10 @@ main (int argc, char **argv)
 
 	gtk_init (&argc, &argv);
 
-	while ((c = getopt (argc, argv, "a:")) != EOF) {
+	while ((c = getopt (argc, argv, "n")) != EOF) {
 		switch (c) {
-		case 'a':
-			auto_raise = atoi (optarg);
+		case 'n':
+			auto_raise = 0;
 			break;
 		default:
 			usage ();

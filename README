@@ -1,2 +1,13 @@
-By Pace Willisson <pace@alum.mit.edu> 2009
+img by Pace Willisson <pace@alum.mit.edu> 
+August 2009
 Dedicated to the public domain
+
+img is a simple GTK program that displays an image in a window.  It's
+claim to fame is that it uses the inotify system call to monitor the
+file and automatically refresh the window after any change.
+
+usage: img [-n] filename
+
+The -n flag means don't auto-raise the window when it is refreshed.
+
+keyboard commands: q, CTL-c, ALT-q, ALT-w or Escape to exit
