@@ -2,8 +2,10 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <memory.h>
+#include <fcntl.h>
 #include <sys/time.h>
 #include <sys/inotify.h>
+
 
 #include <gtk/gtk.h>
 #include <gdk/gdkkeysyms.h>
@@ -223,10 +225,12 @@ main (int argc, char **argv)
 
 	gtk_widget_show (window);
 
-	if ((inotify_fd = inotify_init1 (IN_NONBLOCK | IN_CLOEXEC)) < 0) {
+	if ((inotify_fd = inotify_init ()) < 0) {
 		fprintf (stderr, "error doing inotify_init\n");
 		exit (1);
 	}
+
+	fcntl (inotify_fd, F_SETFL, O_NONBLOCK | O_EXCL);
 
 	g_io_add_watch (g_io_channel_unix_new (inotify_fd), G_IO_IN,
 			inotify_handler, NULL);
